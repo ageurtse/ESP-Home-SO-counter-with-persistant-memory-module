@@ -1,0 +1,139 @@
+esphome:
+  name: 102-fram
+
+  includes:
+    - "i2cfram/i2cfram.h"
+  libraries:
+    - "Wire"
+    - "FRAM_I2C"
+
+  on_boot:
+    priority: 800.0
+    then:
+      - lambda: |-
+          id(counter1) = readfromfram(0x01);
+
+esp8266:
+  board: d1_mini
+
+# Enable logging
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pwd
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "102-fram Fallback Hotspot"
+    password: !secret esphome_pwd
+  manual_ip:
+    static_ip: 192.168.1.102
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+
+# Enable Captive portal
+captive_portal:
+
+#enable ota
+ota:
+  password: !secret esphome_ota
+
+#start the webserver
+web_server:
+  port: 80
+
+#global counter for total usage
+globals:
+  - id: counter1
+    type: float
+    restore_value: no
+    initial_value: "0"
+
+# Enable Home Assistant API
+api:
+  password: !secret esphome_api
+
+  # Make it possible to set the initial value from withing HomeAssistant
+  services:
+    - service: set_total_power_in_kwh
+      variables:
+        new_addres: int # This is where in the fram memory the data is stored, each adres takes 8 bytes of memory, this is done in the custom component
+        new_total_power_in_kwh: float # This is the value that should be stored in memory
+      then:
+        - lambda: |-
+            id(counter1) = new_total_power_in_kwh/0.0005;
+            writetofram(new_addres,id(counter1));
+
+#settings for the I2C bus
+i2c:
+  - id: bus_a
+    sda: GPIO4
+    scl: GPIO5
+    scan: true
+
+#Enabeling the I2CFram module
+custom_component:
+  components:
+    - id: my_fram
+  lambda: |-
+    auto my_fram = new MyFram(0x50);
+    App.register_component(my_fram);
+    return {my_fram};
+
+# restart button voor de s0tool
+button:
+  - platform: restart
+    name: "Restart device"
+
+  # Read a value
+  - platform: template
+    name: "Read a value"
+    on_press:
+      lambda: readfromfram(0x01);
+
+# # Write a value
+#   - platform: template
+#     name: "Write a value"
+#     on_press:
+#       lambda: writetofram(0x01,3.14159265);
+
+sensor:
+  #------------------------# energie #------------------------#
+  - platform: pulse_counter
+    id: soele1
+    pin:
+      number: D5
+      mode:
+        input: true
+        pullup: true
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+    name: "Huidige verbruik"
+    filters:
+      - multiply: 0.03 # in my typical case 2000 pulses per kwh (60s/2000 pulses per kWh)
+
+    total:
+      unit_of_measurement: "kWh"
+      id: eltotal
+      name: "Totaal Verbruik"
+      accuracy_decimals: 1
+      filters:
+        - lambda: return (id(counter1)* 0.0005 ); # (1/2000 pulses per kWh)
+
+#This is the input from which we are counting
+binary_sensor:
+  - platform: gpio
+    name: "SOpuls counter 1"
+    id: sopulscounter1
+    pin:
+      number: D5
+      mode:
+        input: true
+        pullup: true
+    #when there is a new puls, increment the global puls variable and write it to memory
+    on_release:
+      then:
+        - lambda: |-
+            id(counter1) += 1;
+            writetofram(0x01,id(counter1));

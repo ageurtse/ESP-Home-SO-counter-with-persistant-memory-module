@@ -46,5 +46,3 @@ I disabled the timout so one could use the device without home assistant, i did 
 There is the need for the custom component to initializes the memory module. 
 
 From within the binary sensor, the global value is added with 1 at a time, on every count the new value is written to the memory module. 
-
-## Interface

@@ -60,15 +60,15 @@ public:
 float readfromfram(uint32_t memaddr)
 {
   float value;
-  memaddr = memaddr * 8;
-  fram.readObject(memaddr, value);
+  memaddr = memaddr * 4;
+  value = fram.readFloat(memaddr);
   ESP_LOGI(TAG, "read value %f from memory addres %d", value, memaddr);
   return (value);
 }
 
 void writetofram(uint32_t memaddr, float value)
 {
-  memaddr = memaddr * 8;
-  fram.writeObject(memaddr, value);
+  memaddr = memaddr * 4;
+  fram.writeFloat(memaddr, value);
   ESP_LOGI(TAG, "write value %f to memory addres %d ", value, memaddr);
 }

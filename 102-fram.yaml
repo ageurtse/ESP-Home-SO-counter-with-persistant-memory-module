@@ -1,35 +1,50 @@
+substitutions:
+  devicename: 102-fram
+  friendly_name: SOSensor
+  staticip: 192.168.1.102
+
 esphome:
-  name: 102-fram
+  name: $devicename
 
   includes:
     - "i2cfram/i2cfram.h"
   libraries:
     - "Wire"
-    - "FRAM_I2C"
-
-#load the valuw from memory on boot
+#The develop isn't neccesary if version 0.4.3 is released, as of know it is stil in development stage. 
+    - https://github.com/RobTillaart/FRAM_I2C.git#develop
+    
+#load the valuw from memory on boot and store it in a global variabel
   on_boot:
     priority: 800.0
     then:
       - lambda: |-
           id(counter1) = readfromfram(0x01);
 
+#global counter for total usage
+globals:
+  - id: counter1
+    type: float
+
+
+#select here your board type
 esp8266:
   board: d1_mini
 
-# Enable logging
+# Enable debug logging
 logger:
+  level: DEBUG
 
+#Setup your WiFi
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_pwd
 
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
+# Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
-    ssid: "102-fram Fallback Hotspot"
+    ssid: "${devicename} Hotspot"
     password: !secret esphome_pwd
   manual_ip:
-    static_ip: 192.168.1.102
+    static_ip: $staticip
     gateway: 192.168.1.1
     subnet: 255.255.255.0
 
@@ -44,16 +59,10 @@ ota:
 web_server:
   port: 80
 
-#global counter for total usage
-globals:
-  - id: counter1
-    type: float
-    restore_value: no
-    initial_value: "0"
-
 # Enable Home Assistant API
 api:
   password: !secret esphome_api
+  reboot_timeout: 0s
 
   # Make it possible to set the initial value from withing HomeAssistant
   services:
@@ -87,20 +96,8 @@ button:
   - platform: restart
     name: "Restart device"
 
-  # Read a value
-  - platform: template
-    name: "Read a value"
-    on_press:
-      lambda: readfromfram(0x01);
-
-# # Write a value
-#   - platform: template
-#     name: "Write a value"
-#     on_press:
-#       lambda: writetofram(0x01,3.14159265);
-
 sensor:
-  #------------------------# energie #------------------------#
+# A puls_counter to measure the curent power usage, it updates every 60 seconds.
   - platform: pulse_counter
     id: soele1
     pin:
@@ -110,31 +107,74 @@ sensor:
         pullup: true
     unit_of_measurement: "W"
     accuracy_decimals: 0
-    name: "Huidige verbruik"
+    update_interval: 60s
+    name: "${friendly_name} Huidige verbruik"
     filters:
       - multiply: 0.03 # in my typical case 2000 pulses per kwh (60s/2000 pulses per kWh)
 
-    total:
-      unit_of_measurement: "kWh"
-      id: eltotal
-      name: "Totaal Verbruik"
-      accuracy_decimals: 1
-      filters:
-        - lambda: return (id(counter1)* 0.0005 ); # (1/2000 pulses per kWh)
+#a custom sensor to display the total amout of power usage.
+  - platform: template
+    unit_of_measurement: "kWh"
+    id: eltotal2
+    name: "${friendly_name} Totaal Verbruik"
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: return (id(counter1)* 0.0005 ); # (1/2000 pulses per kWh)
 
-#This is the input from which we are counting
+  - platform: uptime
+    id: uptime_s
+    name: Uptime Sensor
+    internal: true
+    
+text_sensor:
+  - platform: template
+    name: "Uptime (formatted)"
+    lambda: |-
+      uint32_t dur = id(uptime_s).state;
+      int dys = 0;
+      int hrs = 0;
+      int mnts = 0;
+      if (dur > 86399) {
+        dys = trunc(dur / 86400);
+        dur = dur - (dys * 86400);
+      }
+      if (dur > 3599) {
+        hrs = trunc(dur / 3600);
+        dur = dur - (hrs * 3600);
+      }
+      if (dur > 59) {
+        mnts = trunc(dur / 60);
+        dur = dur - (mnts * 60);
+      }
+      char buffer[17];
+      sprintf(buffer, "%ud %02uh %02um %02us", dys, hrs, mnts, dur);
+      return {buffer};
+    icon: mdi:clock-start
+    update_interval: 60s
+
+  - platform: wifi_info
+    ip_address:
+      name: ESP IP Address
+    ssid:
+      name: ESP Connected SSID
+    mac_address:
+      name: ESP Mac Wifi Address
+
+#This is the input from which we are counting it is only for internal use
 binary_sensor:
   - platform: gpio
-    name: "SOpuls counter 1"
+    name: "${friendly_name} counter 1"
     id: sopulscounter1
     pin:
       number: D5
       mode:
         input: true
         pullup: true
-    #when there is a new puls, increment the global puls variable and write it to memory
+    internal: true
+    #when there is a new puls, increment the global puls variable and write it to memory, only the pulse count is stored not the actual output.
     on_release:
       then:
         - lambda: |-
             id(counter1) += 1;
             writetofram(0x01,id(counter1));
+

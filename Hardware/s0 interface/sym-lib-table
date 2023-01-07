@@ -1,0 +1,4 @@
+(sym_lib_table
+  (lib (name "Espressif")(type "KiCad")(uri "C:/Users/Gebruiker/OneDrive/Arnold/Electronica projecten/kicad-libraries-main/kicad-libraries-main/libraries/Espressif.kicad_sym")(options "")(descr ""))
+  (lib (name "s0 interface-eagle-import")(type "KiCad")(uri "${KIPRJMOD}/s0 interface-eagle-import.kicad_sym")(options "")(descr ""))
+)

@@ -72,3 +72,11 @@ void writetofram(uint32_t memaddr, float value)
   fram.writeFloat(memaddr, value);
   ESP_LOGI(TAG, "write value %f to memory addres %d ", value, memaddr);
 }
+
+void readcounters()
+{
+  id(counter_1) = readfromfram(0x01);
+  id(counter_2) = readfromfram(0x02);
+  id(counter_3) = readfromfram(0x03);
+  id(counter_4) = readfromfram(0x03);
+}

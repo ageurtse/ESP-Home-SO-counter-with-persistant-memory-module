@@ -1,28 +1,46 @@
+# Energy monitor sensor
+#
+# a 4 channel SO puls counter with persistant memory and a P1 interface.
+#
+# https://github.com/ageurtse/ESP-Home-SO-counter-with-persistant-memory-module
+#
 substitutions:
   devicename: 102-fram
-  friendly_name: SOSensor
-  staticip: 192.168.1.102
+  friendly_name: Test
+  device_description: "Test sensor to see off all paths are right."
+  static_ip: 192.168.1.102
 
+#
+# Setup the device
+#
 esphome:
   name: $devicename
-
   includes:
     - "i2cfram/i2cfram.h"
   libraries:
     - "Wire"
     #The develop isn't neccesary if version 0.4.3 is released, as of know it is stil in development stage.
     - https://github.com/RobTillaart/FRAM_I2C.git#master
+  build_path:
+    "./.build/102/"
 
-  #load the valuw from memory on boot and store it in a global variabel
+    #load the valuw from memory on boot and store it in a global variabel
   on_boot:
     priority: 800.0
     then:
       - lambda: |-
-          id(counter1) = readfromfram(0x01);
+          ESP_LOGI(TAG, "on_boot read counters from memory module");
+          readcounters();
 
 #global counter for total usage
 globals:
-  - id: counter1
+  - id: counter_1
+    type: float
+  - id: counter_2
+    type: float
+  - id: counter_3
+    type: float
+  - id: counter_4
     type: float
 
 #select here your board type
@@ -37,13 +55,14 @@ logger:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_pwd
+  fast_connect: true
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "${devicename} Hotspot"
     password: !secret esphome_pwd
   manual_ip:
-    static_ip: $staticip
+    static_ip: $static_ip
     gateway: 192.168.1.1
     subnet: 255.255.255.0
 
@@ -65,20 +84,20 @@ api:
 
   # Make it possible to set the initial value from withing HomeAssistant
   services:
-    - service: set_total_power_in_kwh
+    - service: set_counter
       variables:
         new_addres: int # This is where in the fram memory the data is stored, each adres takes 8 bytes of memory, this is done in the custom component
-        new_total_power_in_kwh: float # This is the value that should be stored in memory
+        new_total_counts: float # This is the value that should be stored in memory
       then:
         - lambda: |-
-            id(counter1) = new_total_power_in_kwh/0.0005;
-            writetofram(new_addres,id(counter1));
+            writetofram(new_addres,new_total_counts);
+            readcounters();
 
 #settings for the I2C bus
 i2c:
   - id: bus_a
-    sda: GPIO4
-    scl: GPIO5
+    sda: GPIO4 #D2
+    scl: GPIO5 #D1
     scan: true
 
 #Enabeling the I2CFram module
@@ -90,89 +109,286 @@ custom_component:
     App.register_component(my_fram);
     return {my_fram};
 
+uart:
+  # UART0
+  - id: uart0
+    rx_pin:
+      number: RX
+      inverted: yes
+    baud_rate: 115200
+    rx_buffer_size: 1700
+
+dsmr:
+  id: dsmr_poort
+
 # restart button voor de s0tool
 button:
   - platform: restart
-    name: "Restart device"
+    id: switch_restart
+    name: "${friendly_name} Restart"
 
-sensor:
-  # A puls_counter to measure the curent power usage, it updates every 60 seconds.
-  - platform: pulse_counter
-    id: soele1
+#his is the input from which we are counting it is only for internal use
+binary_sensor:
+  - platform: status
+    name: "${friendly_name} Connected with HA"
+    id: homeassistant_status
+
+  - platform: gpio
+    name: "${friendly_name} counter 1"
+    id: puls_counter_1
     pin:
       number: D5
       mode:
         input: true
-        pullup: true
+    #when there is a new puls, increment the global puls variable and write it to memory, only the pulse count is stored not the actual output.
+    on_press:
+      then:
+        - lambda: |-
+            id(counter_1) += 1;
+            writetofram(0x01,id(counter_1));
+
+  - platform: gpio
+    name: "${friendly_name} counter 2"
+    id: puls_counter_2
+    pin:
+      number: D6
+      mode:
+        input: true
+    #when there is a new puls, increment the global puls variable and write it to memory, only the pulse count is stored not the actual output.
+    on_press:
+      then:
+        - lambda: |-
+            id(counter_2) += 1;
+            writetofram(0x02,id(counter_2));
+
+  - platform: gpio
+    name: "${friendly_name} counter 3"
+    id: puls_counter_3
+    pin:
+      number: D7
+      mode:
+        input: true
+    #when there is a new puls, increment the global puls variable and write it to memory, only the pulse count is stored not the actual output.
+    on_press:
+      then:
+        - lambda: |-
+            id(counter_3) += 1;
+            writetofram(0x03,id(counter_3));
+
+  - platform: gpio
+    name: "${friendly_name} counter 4"
+    id: puls_counter_4
+    pin:
+      number: TX
+      mode:
+        input: true
+    #when there is a new puls, increment the global puls variable and write it to memory, only the pulse count is stored not the actual output.
+    on_press:
+      then:
+        - lambda: |-
+            id(counter_4) += 1;
+            writetofram(0x04,id(counter_4));
+
+sensor:
+  # WiFi Signal Sensor
+  #
+  # The wifi_signal sensor platform allows you to read the signal strength of the
+  # currently connected WiFi Access Point.
+  #
+  # https://esphome.io/components/sensor/wifi_signal.html
+  #
+  - platform: wifi_signal
+    id: sensor_wifi_signal
+    name: "${friendly_name}  WiFi Signal"
+    update_interval: 300s
+
+  # A puls_counter to measure the curent power usage, it updates every 60 seconds.
+
+  - platform: pulse_counter
+    id: current_ussage_1
+    pin:
+      number: D5
+      mode:
+        input: true
     unit_of_measurement: "W"
     accuracy_decimals: 0
+    state_class: measurement
+    device_class: power
     update_interval: 60s
-    name: "${friendly_name} Huidige verbruik"
+    name: "${friendly_name} Huidige verbruik 1"
     filters:
       - multiply: 0.03 # in my typical case 2000 pulses per kwh (60s/2000 pulses per kWh)
 
-  #a custom sensor to display the total amout of power usage.
-  - platform: template
-    unit_of_measurement: "kWh"
-    id: eltotal2
-    name: "${friendly_name} Totaal Verbruik"
-    accuracy_decimals: 1
-    update_interval: 60s
-    lambda: return (id(counter1)* 0.0005 ); # (1/2000 pulses per kWh)
-
-  - platform: uptime
-    id: uptime_s
-    name: Uptime Sensor
-    internal: true
-
-text_sensor:
-  - platform: template
-    name: "Uptime (formatted)"
-    lambda: |-
-      uint32_t dur = id(uptime_s).state;
-      int dys = 0;
-      int hrs = 0;
-      int mnts = 0;
-      if (dur > 86399) {
-        dys = trunc(dur / 86400);
-        dur = dur - (dys * 86400);
-      }
-      if (dur > 3599) {
-        hrs = trunc(dur / 3600);
-        dur = dur - (hrs * 3600);
-      }
-      if (dur > 59) {
-        mnts = trunc(dur / 60);
-        dur = dur - (mnts * 60);
-      }
-      char buffer[17];
-      sprintf(buffer, "%ud %02uh %02um %02us", dys, hrs, mnts, dur);
-      return {buffer};
-    icon: mdi:clock-start
-    update_interval: 60s
-
-  - platform: wifi_info
-    ip_address:
-      name: ESP IP Address
-    ssid:
-      name: ESP Connected SSID
-    mac_address:
-      name: ESP Mac Wifi Address
-
-#This is the input from which we are counting it is only for internal use
-binary_sensor:
-  - platform: gpio
-    name: "${friendly_name} counter 1"
-    id: sopulscounter1
+  - platform: pulse_counter
+    id: current_ussage_2
     pin:
-      number: D5
+      number: D6
       mode:
         input: true
-        pullup: true
-    internal: true
-    #when there is a new puls, increment the global puls variable and write it to memory, only the pulse count is stored not the actual output.
-    on_release:
-      then:
-        - lambda: |-
-            id(counter1) += 1;
-            writetofram(0x01,id(counter1));
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+    state_class: measurement
+    device_class: power
+    update_interval: 60s
+    name: "${friendly_name} Huidige verbruik 2"
+    filters:
+      - multiply: 0.03 # in my typical case 2000 pulses per kwh (60s/2000 pulses per kWh)
+
+  - platform: pulse_counter
+    id: current_ussage_3
+    pin:
+      number: D7
+      mode:
+        input: true
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+    state_class: measurement
+    device_class: power
+    update_interval: 60s
+    name: "${friendly_name} Huidige verbruik 3"
+    filters:
+      - multiply: 0.03 # in my typical case 2000 pulses per kwh (60s/2000 pulses per kWh)
+
+  - platform: pulse_counter
+    id: current_ussage_4
+    pin:
+      number: TX
+      mode:
+        input: true
+    unit_of_measurement: "W"
+    accuracy_decimals: 0
+    state_class: measurement
+    device_class: power
+    update_interval: 60s
+    name: "${friendly_name} Huidige verbruik 4"
+    filters:
+      - multiply: 0.03 # in my typical case 2000 pulses per kwh (60s/2000 pulses per kWh)
+
+  #
+  # Below are the total values calculated
+  #
+  - platform: template
+    device_class: energy
+    unit_of_measurement: "kWh"
+    id: total_usage_counter_1
+    name: "${friendly_name} Totaal Verbruik 1"
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: return (id(counter_1)* 0.0005 ); # (1/2000 pulses per kWh)
+
+  - platform: template
+    device_class: energy
+    unit_of_measurement: "kWh"
+    id: total_usage_counter_2
+    name: "${friendly_name} Totaal Verbruik 2"
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: return (id(counter_2)* 0.0005 ); # (1/2000 pulses per kWh)
+
+  - platform: template
+    device_class: energy
+    unit_of_measurement: "kWh"
+    id: total_usage_counter_3
+    name: "${friendly_name} Totaal Verbruik 3"
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: return (id(counter_3)* 0.0005 ); # (1/2000 pulses per kWh)
+
+  - platform: template
+    device_class: energy
+    unit_of_measurement: "kWh"
+    id: total_usage_counter_4
+    name: "${friendly_name} Totaal Verbruik 4"
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: return (id(counter_4)* 0.0005 ); # (1/2000 pulses per kWh)
+
+  # DSMR Info Text Sensor
+  #
+  # The wifi_info text sensor platform exposes different WiFi information via
+  # text sensors.
+  #
+  # hhttps://esphome.io/components/sensor/dsmr.html
+  - platform: dsmr
+    energy_delivered_tariff1:
+      name: "${friendly_name} Energy Consumed Tariff 1"
+    energy_delivered_tariff2:
+      name: "${friendly_name} Energy Consumed Tariff 2"
+    energy_returned_tariff1:
+      name: "${friendly_name} Energy Produced Tariff 1"
+    energy_returned_tariff2:
+      name: "${friendly_name} Energy Produced Tariff 2"
+    power_delivered:
+      name: "${friendly_name} Power Consumed"
+      accuracy_decimals: 3
+    power_returned:
+      name: "${friendly_name} Power Produced"
+      accuracy_decimals: 3
+    electricity_failures:
+      name: "${friendly_name} Electricity Failures"
+      icon: mdi:alert
+    electricity_long_failures:
+      name: "${friendly_name} Long Electricity Failures"
+      icon: mdi:alert
+    voltage_l1:
+      name: "${friendly_name} Voltage Phase 1"
+    voltage_l2:
+      name: "${friendly_name} Voltage Phase 2"
+    voltage_l3:
+      name: "${friendly_name} Voltage Phase 3"
+    current_l1:
+      name: "${friendly_name} Current Phase 1"
+    current_l2:
+      name: "${friendly_name} Current Phase 2"
+    current_l3:
+      name: "${friendly_name} Current Phase 3"
+    power_delivered_l1:
+      name: "${friendly_name} Power Consumed Phase 1"
+      accuracy_decimals: 3
+    power_delivered_l2:
+      name: "${friendly_name} Power Consumed Phase 2"
+      accuracy_decimals: 3
+    power_delivered_l3:
+      name: "${friendly_name} Power Consumed Phase 3"
+      accuracy_decimals: 3
+    power_returned_l1:
+      name: "${friendly_name} Power Produced Phase 1"
+      accuracy_decimals: 3
+    power_returned_l2:
+      name: "${friendly_name} Power Produced Phase 2"
+      accuracy_decimals: 3
+    power_returned_l3:
+      name: "${friendly_name} Power Produced Phase 3"
+      accuracy_decimals: 3
+    gas_delivered:
+      name: "${friendly_name} Gas Consumed"
+
+text_sensor:
+  # DSMR Info Text Sensor
+  #
+  # The wifi_info text sensor platform exposes different WiFi information via
+  # text sensors.
+  #
+  # https://esphome.io/components/sensor/dsmr.html
+  - platform: dsmr
+    identification:
+      name: "${friendly_name} DSMR Identification"
+    p1_version:
+      name: "${friendly_name} DSMR Version"
+
+  # WiFi Info Text Sensor
+  #
+  # The wifi_info text sensor platform exposes different WiFi information via
+  # text sensors.
+  #
+  # https://esphome.io/components/text_sensor/wifi_info.html
+  #
+  - platform: wifi_info
+    ip_address:
+      name: "${friendly_name} IP Address"
+    ssid:
+      name: "${friendly_name} Connected SSID"
+    bssid:
+      name: "${friendly_name} Connected BSSID"
+    mac_address:
+      name: "${friendly_name} Connected MAC"

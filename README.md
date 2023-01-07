@@ -1,7 +1,9 @@
 
-# ESP Home, SO 4 channel counter
+# ESP Home, SO 4 channel counter with P1 interface
 
-I wrote this peace of software because i was in the need of a device which could count my pulses from a water meter and from my solar pannels. 
+<center><img src="image/s0 interface front.png" title="SO/P1 interface board"></center>
+
+I wrote this software and developed the hardware because i was in the need of a device which could count my pulses from a water meter and from my solar pannels. 
 The default counter from within ESPHome does the thrick, one could also preserve te counted value in the memory off a ESP device. 
 But on my electrical meter which counts 2000 pulses per kW it will wearout in a couple of days. 
 

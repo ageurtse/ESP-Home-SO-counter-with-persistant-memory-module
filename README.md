@@ -18,6 +18,8 @@ For the library a big thanks to @RobTillart for his great library https://github
 I'm still working on a test setup, next step is to develop a need 4 wat SO circuit and PCB so one could rebuild.
 
 
+I found a realy big bug in the hardware, the fourth SO input can't be working, becaus off pulling down the TX inpunt on the ESP8266. When pulling this one down at boot, the device won't boot.
+
 
 ## Description about the FRAM module.
 
